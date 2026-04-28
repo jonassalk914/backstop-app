@@ -1,10 +1,11 @@
 "use client";
-import { useState } from "react";
+
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState("");
@@ -16,7 +17,13 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const res = await signIn("credentials", { email, password, redirect: false });
+
+    const res = await signIn("credentials", {
+      email,
+      password,
+      redirect: false,
+    });
+
     if (res?.ok) {
       router.push(params.get("from") || "/dashboard");
     } else {
@@ -39,18 +46,36 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-md">
           <h1 className="h-display text-4xl mb-8">Sign in.</h1>
+
           <form onSubmit={onSubmit} className="space-y-4">
             <div>
-              <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">EMAIL</label>
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">
+                EMAIL
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
+
             <div>
-              <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">PASSWORD</label>
-              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+              <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">
+                PASSWORD
+              </label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
             </div>
 
             {error && (
-              <div className="bg-bad/10 border border-bad/30 text-bad text-sm px-3 py-2">{error}</div>
+              <div className="bg-bad/10 border border-bad/30 text-bad text-sm px-3 py-2">
+                {error}
+              </div>
             )}
 
             <button
@@ -64,10 +89,20 @@ export default function LoginPage() {
 
           <div className="text-ink-muted text-sm mt-6 text-center">
             New here?{" "}
-            <Link href="/signup" className="text-signal hover:underline">Create an account</Link>
+            <Link href="/signup" className="text-signal hover:underline">
+              Create an account
+            </Link>
           </div>
         </div>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading...</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }
