@@ -10,7 +10,7 @@ const TABS = [
   { href: "/dashboard/players", label: "PLAYERS" },
   { href: "/dashboard/services", label: "SERVICES" },
   { href: "/dashboard/schedule", label: "SCHEDULE" },
-  { href: "/dashboard/money", label: "MONEY" },
+  { href: "/dashboard/money", label: "FINANCES" },
   { href: "/dashboard/settings", label: "SETTINGS" },
 ];
 
