@@ -49,7 +49,7 @@ export default function MoneyPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="h-display text-3xl tracking-wider">MONEY</h1>
+      <h1 className="h-display text-3xl tracking-wider">FINANCES</h1>
 
       {/* Top stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-line border border-line">
@@ -151,7 +151,7 @@ export default function MoneyPage() {
 
       {/* Unpaid list */}
       <div>
-        <h2 className="h-display text-2xl tracking-wider mb-4">UNPAID</h2>
+        <h2 className="h-display text-2xl tracking-wider mb-4">OUTSTANDING PAYMENTS</h2>
         {data.unpaidBookings.length === 0 ? (
           <div className="bg-bg-panel border border-line p-6 text-center text-ink-muted">
             No outstanding payments. 💪

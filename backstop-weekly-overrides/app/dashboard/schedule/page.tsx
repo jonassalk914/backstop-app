@@ -19,24 +19,7 @@ type Override = {
   endMinute: number | null;
 };
 
-type Booking = {
-  id: string;
-  date: string;
-  startMinute: number;
-  endMinute: number;
-  playerName: string;
-  serviceName: string;
-};
-
 type Range = { startMinute: number; endMinute: number };
-
-/** Compact summary of a date's status, used for cell rendering. */
-type DayStatus = {
-  kind: "no-rule" | "available" | "tweaked" | "blocked" | "fully-booked";
-  bookingCount: number;
-  hasAdd: boolean;
-  hasBlock: boolean;
-};
 
 /* ---------- helpers ---------- */
 
@@ -69,10 +52,6 @@ function formatTimeDisplay(min: number): string {
   const period = h24 >= 12 ? "PM" : "AM";
   const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
   return `${h12}:${m.toString().padStart(2, "0")} ${period}`;
-}
-
-function formatRange(r: Range): string {
-  return `${formatTimeDisplay(r.startMinute)} – ${formatTimeDisplay(r.endMinute)}`;
 }
 
 /** Mirror of computeEffectiveRanges in lib/booking.ts — kept client-side for the calendar viz. */
@@ -112,75 +91,19 @@ function computeEffective(weekly: Range[], overrides: Override[]): Range[] {
   return out;
 }
 
-/** Total bookable minutes on a date after subtracting bookings from effective windows. */
-function unbookedMinutes(effective: Range[], bookings: Booking[]): number {
-  let remaining = effective.map((r) => ({ ...r }));
-  for (const b of bookings) {
-    const next: Range[] = [];
-    for (const r of remaining) {
-      if (b.endMinute <= r.startMinute || b.startMinute >= r.endMinute) {
-        next.push(r);
-        continue;
-      }
-      if (b.startMinute > r.startMinute) next.push({ startMinute: r.startMinute, endMinute: b.startMinute });
-      if (b.endMinute < r.endMinute) next.push({ startMinute: b.endMinute, endMinute: r.endMinute });
-    }
-    remaining = next;
-  }
-  return remaining.reduce((sum, r) => sum + (r.endMinute - r.startMinute), 0);
-}
-
-/** Compute a cell's display status from raw inputs. */
-function statusForDate(
-  weeklyForDow: Range[],
-  dayOverrides: Override[],
-  dayBookings: Booking[]
-): DayStatus {
-  const hasAdd = dayOverrides.some((o) => o.type === "ADD");
-  const hasBlock = dayOverrides.some((o) => o.type === "BLOCK");
-  const bookingCount = dayBookings.length;
-  const effective = computeEffective(weeklyForDow, dayOverrides);
-
-  if (effective.length === 0) {
-    // No bookable time. Decide whether it's structural (no rule) or chosen (blocked).
-    if (weeklyForDow.length > 0 && hasBlock) {
-      return { kind: "blocked", bookingCount, hasAdd, hasBlock };
-    }
-    return { kind: "no-rule", bookingCount, hasAdd, hasBlock };
-  }
-
-  const free = unbookedMinutes(effective, dayBookings);
-  if (bookingCount > 0 && free === 0) {
-    return { kind: "fully-booked", bookingCount, hasAdd, hasBlock };
-  }
-
-  return {
-    kind: hasAdd || hasBlock ? "tweaked" : "available",
-    bookingCount,
-    hasAdd,
-    hasBlock,
-  };
-}
-
-/* =====================================================================
-   Page
-   ===================================================================== */
+/* ---------- main ---------- */
 
 export default function SchedulePage() {
   const [weekly, setWeekly] = useState<WeeklyWindow[]>([]);
   const [overrides, setOverrides] = useState<Override[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
   const [savingWeekly, setSavingWeekly] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch("/api/availability");
-    if (!res.ok) return;
-    const data = await res.json();
-    setWeekly(data.weekly ?? []);
-    setOverrides(data.overrides ?? []);
-    setBookings(data.bookings ?? []);
+    const data = await fetch("/api/availability").then((r) => r.json());
+    setWeekly(data.weekly);
+    setOverrides(data.overrides);
   }
 
   useEffect(() => { load(); }, []);
@@ -188,7 +111,7 @@ export default function SchedulePage() {
   /* ---- weekly editor handlers ---- */
 
   function addWeekly(dow: number) {
-    setWeekly([...weekly, { dayOfWeek: dow, startMinute: 16 * 60, endMinute: 20 * 60 }]);
+    setWeekly([...weekly, { dayOfWeek: dow, startMinute: 9 * 60, endMinute: 17 * 60 }]);
   }
   function updateWeekly(idx: number, patch: Partial<WeeklyWindow>) {
     setWeekly(weekly.map((w, i) => (i === idx ? { ...w, ...patch } : w)));
@@ -231,9 +154,7 @@ export default function SchedulePage() {
         <div className="flex justify-between items-end flex-wrap gap-4">
           <div>
             <h1 className="h-display text-3xl tracking-wider">WEEKLY AVAILABILITY</h1>
-            <p className="text-sm text-ink-muted mt-1">
-              Default windows that repeat every week. The calendar below shows what's actually bookable, with any one-off changes layered on top.
-            </p>
+            <p className="text-sm text-ink-muted mt-1">Recurring hours every week. The calendar below shows the effective schedule with any date-specific overrides.</p>
           </div>
           <button
             onClick={saveWeekly}
@@ -244,56 +165,44 @@ export default function SchedulePage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
+        <div className="space-y-2">
           {DOW_LABELS_LONG.map((day, dow) => {
-            const dayWindows = weekly
-              .map((w, i) => ({ ...w, idx: i }))
-              .filter((w) => w.dayOfWeek === dow);
-            const isOff = dayWindows.length === 0;
-
+            const dayWindows = weekly.map((w, i) => ({ ...w, idx: i })).filter((w) => w.dayOfWeek === dow);
             return (
-              <div
-                key={dow}
-                className={`bg-bg-panel border p-3 flex flex-col gap-2 ${isOff ? "border-line/60" : "border-line"}`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className={`font-mono text-xs tracking-widest ${isOff ? "text-ink-dim" : "text-signal"}`}>
-                    {day}
-                  </div>
+              <div key={dow} className="bg-bg-panel border border-line p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="font-mono text-sm tracking-widest">{day}</div>
                   <button
                     onClick={() => addWeekly(dow)}
-                    className="text-xs font-mono text-ink-muted hover:text-signal"
-                    aria-label={`Add window on ${day}`}
+                    className="text-xs font-mono text-signal hover:underline"
                   >
                     + ADD
                   </button>
                 </div>
-
-                {isOff ? (
-                  <div className="text-xs text-ink-dim italic py-2">Day off</div>
+                {dayWindows.length === 0 ? (
+                  <div className="text-sm text-ink-dim">Off</div>
                 ) : (
                   <div className="space-y-2">
                     {dayWindows.map((w) => (
-                      <div key={w.idx} className="flex items-center gap-1 flex-wrap">
+                      <div key={w.idx} className="flex items-center gap-2">
                         <input
                           type="time"
                           value={minutesToTimeStr(w.startMinute)}
                           onChange={(e) => updateWeekly(w.idx, { startMinute: timeStrToMinutes(e.target.value) })}
-                          className="!w-auto !p-1.5 !text-xs"
+                          className="!w-auto"
                         />
-                        <span className="text-ink-muted text-xs">→</span>
+                        <span className="text-ink-muted">→</span>
                         <input
                           type="time"
                           value={minutesToTimeStr(w.endMinute)}
                           onChange={(e) => updateWeekly(w.idx, { endMinute: timeStrToMinutes(e.target.value) })}
-                          className="!w-auto !p-1.5 !text-xs"
+                          className="!w-auto"
                         />
                         <button
                           onClick={() => removeWeekly(w.idx)}
-                          className="text-bad text-xs hover:underline ml-auto"
-                          aria-label="Remove window"
+                          className="text-bad text-sm font-mono px-2 hover:underline"
                         >
-                          ×
+                          REMOVE
                         </button>
                       </div>
                     ))}
@@ -305,12 +214,12 @@ export default function SchedulePage() {
         </div>
       </section>
 
-      {/* ---------- CALENDAR + DAY PANEL ---------- */}
+      {/* ---------- CALENDAR VIZ + OVERRIDES ---------- */}
       <section className="space-y-4">
         <div>
           <h2 className="h-display text-3xl tracking-wider">CALENDAR</h2>
           <p className="text-sm text-ink-muted mt-1">
-            Click any date to see what's bookable, view confirmed sessions, or add a one-off change.
+            Upcoming dates with effective availability. Click a date to add a one-off override (extra time or a block).
           </p>
         </div>
 
@@ -318,23 +227,21 @@ export default function SchedulePage() {
           <CalendarGrid
             weekly={weekly}
             overrides={overrides}
-            bookings={bookings}
             selectedDate={selectedDate}
             onSelect={setSelectedDate}
           />
-          <div className="bg-bg-panel border border-line p-5 min-h-[300px]">
+          <div className="bg-bg-panel border border-line p-4 min-h-[300px]">
             {selectedDate ? (
               <DayPanel
                 date={selectedDate}
                 weekly={weekly}
                 overrides={overrides}
-                bookings={bookings}
                 onChanged={load}
                 onClose={() => setSelectedDate(null)}
               />
             ) : (
               <div className="text-ink-muted text-sm py-8 text-center">
-                Pick a date on the calendar to see what's bookable.
+                Pick a date on the calendar to see effective availability and add overrides.
               </div>
             )}
           </div>
@@ -344,20 +251,16 @@ export default function SchedulePage() {
   );
 }
 
-/* =====================================================================
-   Calendar grid
-   ===================================================================== */
+/* ---------- calendar grid ---------- */
 
 function CalendarGrid({
   weekly,
   overrides,
-  bookings,
   selectedDate,
   onSelect,
 }: {
   weekly: WeeklyWindow[];
   overrides: Override[];
-  bookings: Booking[];
   selectedDate: string | null;
   onSelect: (d: string) => void;
 }) {
@@ -366,7 +269,7 @@ function CalendarGrid({
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
 
-  // Group lookups for fast cell rendering
+  // Group weekly by DOW + overrides by date for quick lookup
   const weeklyByDow = useMemo(() => {
     const m = new Map<number, Range[]>();
     for (const w of weekly) {
@@ -387,16 +290,6 @@ function CalendarGrid({
     return m;
   }, [overrides]);
 
-  const bookingsByDate = useMemo(() => {
-    const m = new Map<string, Booking[]>();
-    for (const b of bookings) {
-      const arr = m.get(b.date) ?? [];
-      arr.push(b);
-      m.set(b.date, arr);
-    }
-    return m;
-  }, [bookings]);
-
   const monthStart = new Date(viewYear, viewMonth, 1);
   const monthEnd = new Date(viewYear, viewMonth + 1, 0);
   const leadingBlanks = monthStart.getDay();
@@ -410,10 +303,6 @@ function CalendarGrid({
     const d = new Date(viewYear, viewMonth + delta, 1);
     setViewYear(d.getFullYear());
     setViewMonth(d.getMonth());
-  }
-  function goToday() {
-    setViewYear(today.getFullYear());
-    setViewMonth(today.getMonth());
   }
 
   const cells: Array<{ day: number; dateStr: string } | null> = [];
@@ -430,24 +319,16 @@ function CalendarGrid({
         <button
           onClick={() => shift(-1)}
           disabled={!canGoBack}
-          className="text-sm font-mono px-3 py-1 disabled:opacity-30 hover:text-signal"
+          className="text-sm font-mono px-2 py-1 disabled:opacity-30 hover:text-signal"
           aria-label="Previous month"
         >
           ←
         </button>
-        <div className="flex items-center gap-3">
-          <div className="font-mono text-sm tracking-widest uppercase">{monthLabel}</div>
-          <button
-            onClick={goToday}
-            className="text-[10px] font-mono tracking-widest text-ink-muted hover:text-signal border border-line px-2 py-0.5"
-          >
-            TODAY
-          </button>
-        </div>
+        <div className="font-mono text-sm tracking-widest uppercase">{monthLabel}</div>
         <button
           onClick={() => shift(1)}
           disabled={!canGoForward}
-          className="text-sm font-mono px-3 py-1 disabled:opacity-30 hover:text-signal"
+          className="text-sm font-mono px-2 py-1 disabled:opacity-30 hover:text-signal"
           aria-label="Next month"
         >
           →
@@ -462,179 +343,69 @@ function CalendarGrid({
 
       <div className="grid grid-cols-7 gap-1">
         {cells.map((cell, i) => {
-          if (!cell) return <div key={i} className="aspect-square" />;
-
+          if (!cell) return <div key={i} />;
           const isPast = cell.dateStr < todayStr;
           const isSelected = cell.dateStr === selectedDate;
           const isToday = cell.dateStr === todayStr;
           const dow = parseDateStr(cell.dateStr).getDay();
           const dayWeekly = weeklyByDow.get(dow) ?? [];
           const dayOverrides = overridesByDate.get(cell.dateStr) ?? [];
-          const dayBookings = bookingsByDate.get(cell.dateStr) ?? [];
-          const status = statusForDate(dayWeekly, dayOverrides, dayBookings);
+          const effective = computeEffective(dayWeekly, dayOverrides);
+          const hasAvailability = effective.length > 0;
+          const hasOverride = dayOverrides.length > 0;
 
           return (
-            <DayCell
+            <button
               key={cell.dateStr}
-              day={cell.day}
-              dateStr={cell.dateStr}
-              status={status}
-              isPast={isPast}
-              isToday={isToday}
-              isSelected={isSelected}
               onClick={() => !isPast && onSelect(cell.dateStr)}
-            />
+              disabled={isPast}
+              className={[
+                "aspect-square flex flex-col items-center justify-center text-sm font-mono border transition relative",
+                isSelected
+                  ? "bg-signal text-bg border-signal"
+                  : isPast
+                    ? "border-transparent text-ink-dim/40 cursor-not-allowed"
+                    : hasAvailability
+                      ? "border-signal/40 text-ink hover:border-signal"
+                      : "border-line text-ink-dim hover:border-ink-muted",
+                isToday && !isSelected ? "ring-1 ring-ink-muted/30" : "",
+              ].join(" ")}
+            >
+              <span>{cell.day}</span>
+              <div className="absolute bottom-1 flex gap-0.5">
+                {hasAvailability && !isSelected && (
+                  <span className="w-1 h-1 rounded-full bg-signal" />
+                )}
+                {hasOverride && !isSelected && (
+                  <span className="w-1 h-1 rounded-full bg-warn" />
+                )}
+              </div>
+            </button>
           );
         })}
       </div>
 
-      <Legend />
+      <div className="mt-4 text-[10px] font-mono text-ink-dim flex flex-wrap gap-x-4 gap-y-1">
+        <span><span className="inline-block w-1 h-1 rounded-full bg-signal align-middle mr-1" />AVAILABLE</span>
+        <span><span className="inline-block w-1 h-1 rounded-full bg-warn align-middle mr-1" />OVERRIDE</span>
+        <span><span className="inline-block w-2 h-2 bg-signal align-middle mr-1" />SELECTED</span>
+      </div>
     </div>
   );
 }
 
-/* ---------- DayCell — the four-state language ---------- */
-
-function DayCell({
-  day,
-  dateStr,
-  status,
-  isPast,
-  isToday,
-  isSelected,
-  onClick,
-}: {
-  day: number;
-  dateStr: string;
-  status: DayStatus;
-  isPast: boolean;
-  isToday: boolean;
-  isSelected: boolean;
-  onClick: () => void;
-}) {
-  // Base classes
-  let base = "aspect-square flex flex-col items-center justify-center text-sm font-mono border transition relative";
-  let stateClasses = "";
-
-  if (isSelected) {
-    stateClasses = "bg-signal text-bg border-signal";
-  } else if (isPast) {
-    stateClasses = "border-transparent text-ink-dim/40 cursor-not-allowed";
-  } else {
-    switch (status.kind) {
-      case "no-rule":
-        stateClasses = "border-line text-ink-dim hover:border-ink-muted";
-        break;
-      case "available":
-        stateClasses = "border-signal/40 text-ink hover:border-signal";
-        break;
-      case "tweaked":
-        stateClasses = "border-warn/50 text-ink hover:border-warn";
-        break;
-      case "blocked":
-        stateClasses = "border-bad/40 text-ink-dim hover:border-bad";
-        break;
-      case "fully-booked":
-        stateClasses = "bg-signal/10 border-signal/60 text-ink hover:border-signal";
-        break;
-    }
-  }
-
-  const ringClass = isToday && !isSelected ? "ring-1 ring-ink-muted/30" : "";
-
-  // Tooltip text via title attribute — accessible and friction-free
-  const tooltip =
-    isPast
-      ? "Past"
-      : status.kind === "no-rule"
-        ? "No availability set"
-        : status.kind === "available"
-          ? "Available — weekly rule"
-          : status.kind === "tweaked"
-            ? `Available — ${[
-                status.hasAdd ? "extra time added" : null,
-                status.hasBlock ? "partial block" : null,
-              ].filter(Boolean).join(", ")}`
-            : status.kind === "blocked"
-              ? "Blocked off"
-              : "Fully booked";
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={isPast}
-      className={[base, stateClasses, ringClass].filter(Boolean).join(" ")}
-      title={`${dateStr} — ${tooltip}${status.bookingCount > 0 ? ` · ${status.bookingCount} booking${status.bookingCount === 1 ? "" : "s"}` : ""}`}
-    >
-      <span>{day}</span>
-
-      {/* Indicator row: dot + override marks */}
-      {!isPast && !isSelected && (
-        <div className="absolute bottom-1 flex items-center gap-0.5">
-          {status.kind === "available" && (
-            <span className="w-1 h-1 rounded-full bg-signal" />
-          )}
-          {status.kind === "tweaked" && (
-            <>
-              <span className="w-1 h-1 rounded-full bg-signal" />
-              {status.hasAdd && <span className="w-1 h-1 rounded-full bg-ok" />}
-              {status.hasBlock && <span className="w-1 h-1 rounded-full bg-bad" />}
-            </>
-          )}
-          {status.kind === "blocked" && (
-            <span className="w-1 h-1 rounded-full bg-bad" />
-          )}
-          {status.kind === "fully-booked" && (
-            <span className="text-[8px] font-mono text-signal tracking-widest">FULL</span>
-          )}
-        </div>
-      )}
-
-      {/* Booking count badge — corner */}
-      {!isPast && status.bookingCount > 0 && status.kind !== "fully-booked" && (
-        <span
-          className={`absolute top-0.5 right-0.5 text-[9px] font-mono leading-none px-1 py-0.5 ${
-            isSelected ? "bg-bg/30 text-bg" : "bg-bg-elev text-ink"
-          }`}
-        >
-          {status.bookingCount}
-        </span>
-      )}
-    </button>
-  );
-}
-
-function Legend() {
-  return (
-    <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-[10px] font-mono text-ink-dim">
-      <LegendItem swatch={<span className="w-3 h-3 inline-block border border-signal/40 align-middle" />} label="AVAILABLE" />
-      <LegendItem swatch={<span className="w-3 h-3 inline-block border border-warn/50 align-middle" />} label="MODIFIED" />
-      <LegendItem swatch={<span className="w-3 h-3 inline-block border border-bad/40 align-middle" />} label="BLOCKED" />
-      <LegendItem swatch={<span className="w-3 h-3 inline-block bg-signal/10 border border-signal/60 align-middle" />} label="FULLY BOOKED" />
-      <LegendItem swatch={<span className="px-1 bg-bg-elev text-[8px] align-middle">2</span>} label="BOOKING COUNT" />
-    </div>
-  );
-}
-function LegendItem({ swatch, label }: { swatch: React.ReactNode; label: string }) {
-  return <span className="flex items-center gap-1.5">{swatch}{label}</span>;
-}
-
-/* =====================================================================
-   Day panel — narrative-style summary
-   ===================================================================== */
+/* ---------- side panel ---------- */
 
 function DayPanel({
   date,
   weekly,
   overrides,
-  bookings,
   onChanged,
   onClose,
 }: {
   date: string;
   weekly: WeeklyWindow[];
   overrides: Override[];
-  bookings: Booking[];
   onChanged: () => void;
   onClose: () => void;
 }) {
@@ -645,14 +416,7 @@ function DayPanel({
     .filter((w) => w.dayOfWeek === dow)
     .map((w) => ({ startMinute: w.startMinute, endMinute: w.endMinute }));
   const dayOverrides = overrides.filter((o) => o.date === date);
-  const adds = dayOverrides.filter((o) => o.type === "ADD");
-  const blocks = dayOverrides.filter((o) => o.type === "BLOCK");
-  const dayBookings = bookings
-    .filter((b) => b.date === date)
-    .sort((a, b) => a.startMinute - b.startMinute);
-
   const effective = computeEffective(dayWeekly, dayOverrides);
-  const free = unbookedMinutes(effective, dayBookings);
 
   const longLabel = parseDateStr(date).toLocaleDateString("en-US", {
     weekday: "long",
@@ -660,49 +424,6 @@ function DayPanel({
     day: "numeric",
     year: "numeric",
   });
-  const dayName = parseDateStr(date).toLocaleDateString("en-US", { weekday: "long" });
-
-  /* ----- narrative summary line ----- */
-  let summary: React.ReactNode;
-  if (effective.length === 0) {
-    if (blocks.length > 0) {
-      summary = <span className="text-bad">Blocked off — no bookings possible.</span>;
-    } else {
-      summary = <span className="text-ink-dim">No availability set for this date.</span>;
-    }
-  } else if (free === 0 && dayBookings.length > 0) {
-    summary = <span className="text-signal">Fully booked.</span>;
-  } else {
-    summary = (
-      <span>
-        <span className="text-signal">{effective.map(formatRange).join(", ")}</span>{" "}
-        <span className="text-ink-muted">bookable</span>
-      </span>
-    );
-  }
-
-  /* ----- "where this came from" subtitle ----- */
-  const sourceParts: string[] = [];
-  if (dayWeekly.length > 0) {
-    sourceParts.push(`weekly ${dayName} hours (${dayWeekly.map(formatRange).join(", ")})`);
-  }
-  if (adds.length > 0) {
-    sourceParts.push(
-      `extra time added (${adds.map((a) =>
-        a.startMinute === null ? "whole day" : formatRange({ startMinute: a.startMinute as number, endMinute: a.endMinute as number })
-      ).join(", ")})`
-    );
-  }
-  if (blocks.length > 0) {
-    sourceParts.push(
-      `blocked (${blocks.map((b) =>
-        b.startMinute === null ? "whole day" : formatRange({ startMinute: b.startMinute as number, endMinute: b.endMinute as number })
-      ).join(", ")})`
-    );
-  }
-  const sourceText = sourceParts.length > 0
-    ? sourceParts.length === 1 ? sourceParts[0] : sourceParts.slice(0, -1).join(", ") + " and " + sourceParts[sourceParts.length - 1]
-    : null;
 
   async function removeOverride(id: string) {
     if (!confirm("Remove this override?")) return;
@@ -711,8 +432,7 @@ function DayPanel({
   }
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
+    <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-xs font-mono tracking-widest text-signal mb-1">SELECTED DATE</div>
@@ -723,54 +443,46 @@ function DayPanel({
         </button>
       </div>
 
-      {/* Narrative summary */}
-      <div className="space-y-1">
-        <div className="text-sm">{summary}</div>
-        {sourceText && (
-          <div className="text-xs text-ink-dim">From {sourceText}.</div>
-        )}
-      </div>
-
-      {/* Bookings on this date */}
-      {dayBookings.length > 0 && (
-        <div>
-          <div className="text-[10px] font-mono tracking-widest text-ink-dim mb-2">
-            BOOKINGS ({dayBookings.length})
-          </div>
+      {/* Effective availability */}
+      <div>
+        <div className="text-[10px] font-mono tracking-widest text-ink-dim mb-2">EFFECTIVE AVAILABILITY</div>
+        {effective.length === 0 ? (
+          <div className="text-sm text-ink-dim py-2">Unavailable on this date.</div>
+        ) : (
           <div className="space-y-1">
-            {dayBookings.map((b) => (
-              <div
-                key={b.id}
-                className="flex items-center justify-between bg-bg-elev border border-line px-3 py-2 text-sm"
-              >
-                <div className="min-w-0">
-                  <div className="font-semibold truncate">{b.playerName}</div>
-                  <div className="text-xs text-ink-muted truncate">{b.serviceName}</div>
-                </div>
-                <div className="font-mono text-xs whitespace-nowrap ml-3">
-                  {formatTimeDisplay(b.startMinute)}
-                </div>
+            {effective.map((r, i) => (
+              <div key={i} className="bg-bg-elev border border-line px-3 py-1.5 text-sm font-mono">
+                {formatTimeDisplay(r.startMinute)} → {formatTimeDisplay(r.endMinute)}
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+        {dayWeekly.length > 0 && (
+          <div className="text-[10px] text-ink-dim mt-2">
+            From weekly {DOW_LABELS_LONG[dow]} ·{" "}
+            {dayWeekly.map((r, i) => (
+              <span key={i}>
+                {i > 0 && ", "}
+                {formatTimeDisplay(r.startMinute)}–{formatTimeDisplay(r.endMinute)}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Existing overrides */}
       {dayOverrides.length > 0 && (
         <div>
-          <div className="text-[10px] font-mono tracking-widest text-ink-dim mb-2">
-            OVERRIDES ON THIS DATE
-          </div>
+          <div className="text-[10px] font-mono tracking-widest text-ink-dim mb-2">OVERRIDES ON THIS DATE</div>
           <div className="space-y-1">
             {dayOverrides.map((o) => (
               <div
                 key={o.id}
                 className="flex items-center justify-between bg-bg-elev border border-line px-3 py-1.5 text-sm"
               >
-                <span className="flex items-center gap-2">
+                <span>
                   <span
-                    className={`text-[9px] font-mono tracking-widest px-1.5 py-0.5 ${
+                    className={`inline-block text-[9px] font-mono tracking-widest px-1.5 py-0.5 mr-2 ${
                       o.type === "ADD"
                         ? "bg-ok/15 text-ok border border-ok/40"
                         : "bg-bad/15 text-bad border border-bad/40"
@@ -778,7 +490,7 @@ function DayPanel({
                   >
                     {o.type}
                   </span>
-                  <span className="font-mono text-xs">
+                  <span className="font-mono">
                     {o.startMinute === null && o.endMinute === null
                       ? "WHOLE DAY"
                       : `${formatTimeDisplay(o.startMinute as number)} → ${formatTimeDisplay(o.endMinute as number)}`}
@@ -824,9 +536,7 @@ function DayPanel({
   );
 }
 
-/* =====================================================================
-   Override form (unchanged from previous)
-   ===================================================================== */
+/* ---------- override form ---------- */
 
 function OverrideForm({
   date,
@@ -839,7 +549,7 @@ function OverrideForm({
   onCancel: () => void;
   onSaved: () => void;
 }) {
-  const [wholeDay, setWholeDay] = useState(type === "BLOCK");
+  const [wholeDay, setWholeDay] = useState(type === "BLOCK"); // common case for BLOCK
   const [startStr, setStartStr] = useState("12:00");
   const [endStr, setEndStr] = useState("15:00");
   const [saving, setSaving] = useState(false);

@@ -4,6 +4,9 @@ CREATE TYPE "PaymentStatus" AS ENUM ('UNPAID', 'PARTIAL', 'PAID', 'CANCELLED');
 -- CreateEnum
 CREATE TYPE "BookingStatus" AS ENUM ('CONFIRMED', 'CANCELLED', 'COMPLETED');
 
+-- CreateEnum
+CREATE TYPE "AvailabilityOverrideType" AS ENUM ('ADD', 'BLOCK');
+
 -- CreateTable
 CREATE TABLE "Coach" (
     "id" TEXT NOT NULL,
@@ -44,6 +47,19 @@ CREATE TABLE "Availability" (
     "endMinute" INTEGER NOT NULL,
 
     CONSTRAINT "Availability_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AvailabilityOverride" (
+    "id" TEXT NOT NULL,
+    "coachId" TEXT NOT NULL,
+    "date" DATE NOT NULL,
+    "type" "AvailabilityOverrideType" NOT NULL,
+    "startMinute" INTEGER,
+    "endMinute" INTEGER,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "AvailabilityOverride_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -92,6 +108,9 @@ CREATE INDEX "Service_coachId_active_idx" ON "Service"("coachId", "active");
 CREATE INDEX "Availability_coachId_dayOfWeek_idx" ON "Availability"("coachId", "dayOfWeek");
 
 -- CreateIndex
+CREATE INDEX "AvailabilityOverride_coachId_date_idx" ON "AvailabilityOverride"("coachId", "date");
+
+-- CreateIndex
 CREATE INDEX "Player_coachId_idx" ON "Player"("coachId");
 
 -- CreateIndex
@@ -117,6 +136,9 @@ ALTER TABLE "Service" ADD CONSTRAINT "Service_coachId_fkey" FOREIGN KEY ("coachI
 
 -- AddForeignKey
 ALTER TABLE "Availability" ADD CONSTRAINT "Availability_coachId_fkey" FOREIGN KEY ("coachId") REFERENCES "Coach"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AvailabilityOverride" ADD CONSTRAINT "AvailabilityOverride_coachId_fkey" FOREIGN KEY ("coachId") REFERENCES "Coach"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Player" ADD CONSTRAINT "Player_coachId_fkey" FOREIGN KEY ("coachId") REFERENCES "Coach"("id") ON DELETE CASCADE ON UPDATE CASCADE;
