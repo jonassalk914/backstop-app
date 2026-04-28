@@ -9,22 +9,30 @@ export function parseMoneyToCents(input: string): number {
   return Math.round(n * 100);
 }
 
-export function formatTime(date: Date): string {
-  return date.toLocaleTimeString("en-US", {
+/**
+ * Time/date formatters. Pass a timezone (the coach's IANA tz) so player and
+ * coach see the same wall clock regardless of where their browser/server is.
+ * The `tz`-less variants kept for any caller that still wants browser-local
+ * — but most surfaces should pass tz explicitly.
+ */
+export function formatTime(date: Date, tz?: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-  });
+  }).format(date);
 }
 
-export function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-US", {
+export function formatDate(date: Date, tz?: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
     weekday: "short",
     month: "short",
     day: "numeric",
-  });
+  }).format(date);
 }
 
-export function formatDateTime(date: Date): string {
-  return `${formatDate(date)} at ${formatTime(date)}`;
+export function formatDateTime(date: Date, tz?: string): string {
+  return `${formatDate(date, tz)} at ${formatTime(date, tz)}`;
 }

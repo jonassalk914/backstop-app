@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { formatMoney, formatTime } from "@/lib/format";
+import { tzAbbreviation } from "@/lib/timezone";
 
 /**
  * Public booking flow. Three navigable steps mounted in one component:
@@ -25,11 +26,13 @@ export function BookingFlow({
   services,
   paymentMethods,
   paymentInstructions,
+  timezone,
 }: {
   slug: string;
   services: Service[];
   paymentMethods: string[];
   paymentInstructions: string | null;
+  timezone: string;
 }) {
   const [step, setStep] = useState<Step>("service");
   const [service, setService] = useState<Service | null>(null);
@@ -117,7 +120,7 @@ export function BookingFlow({
         <div className="text-signal h-display text-5xl mb-3">BOOKED.</div>
         <p className="text-ink mb-4">
           {service && slot && (
-            <>You're set for <strong>{formatLongDateTime(slot.start)}</strong>.</>
+            <>You're set for <strong>{formatLongDateTime(slot.start, timezone)}</strong>.</>
           )}
         </p>
         {paymentInstructions && (
@@ -188,6 +191,7 @@ export function BookingFlow({
       {step === "datetime" && service && (
         <DateTimeStep
           service={service}
+          timezone={timezone}
           availableDates={availableDates}
           datesLoading={datesLoading}
           datesError={datesError}
@@ -207,6 +211,7 @@ export function BookingFlow({
         <DetailsStep
           service={service}
           slot={slot}
+          timezone={timezone}
           paymentMethods={paymentMethods}
           name={name} setName={setName}
           email={email} setEmail={setEmail}
@@ -248,12 +253,14 @@ function ServiceList({ services, onPick }: { services: Service[]; onPick: (s: Se
 
 function DateTimeStep({
   service,
+  timezone,
   availableDates, datesLoading, datesError, onRetryDates,
   selectedDate, onSelectDate,
   slots, slotsLoading, slotsError, onRetrySlots, onPickSlot,
   onBack,
 }: {
   service: Service;
+  timezone: string;
   availableDates: Set<string>;
   datesLoading: boolean;
   datesError: string | null;
@@ -289,8 +296,11 @@ function DateTimeStep({
 
       {selectedDate && (
         <div>
-          <div className="text-xs font-mono tracking-widest text-ink-dim mb-2">
-            TIMES — {formatLongDate(selectedDate).toUpperCase()}
+          <div className="text-xs font-mono tracking-widest text-ink-dim mb-2 flex items-center justify-between gap-2 flex-wrap">
+            <span>TIMES — {formatLongDate(selectedDate).toUpperCase()}</span>
+            <span className="normal-case tracking-wider text-[10px]">
+              shown in {tzAbbreviation(timezone)} (coach time)
+            </span>
           </div>
           {slotsError ? (
             <ErrorBox message={slotsError} onRetry={onRetrySlots} />
@@ -310,7 +320,7 @@ function DateTimeStep({
                   onClick={() => onPickSlot(s)}
                   className="bg-bg-panel border border-line hover:border-signal active:bg-bg-hover transition py-3 text-sm font-mono"
                 >
-                  {formatTime(new Date(s.start))}
+                  {formatTime(new Date(s.start), timezone)}
                 </button>
               ))}
             </div>
@@ -322,13 +332,14 @@ function DateTimeStep({
 }
 
 function DetailsStep({
-  service, slot, paymentMethods,
+  service, slot, timezone, paymentMethods,
   name, setName, email, setEmail, phone, setPhone,
   paymentMethod, setPaymentMethod,
   submitting, error, onBack, onSubmit,
 }: {
   service: Service;
   slot: Slot;
+  timezone: string;
   paymentMethods: string[];
   name: string; setName: (v: string) => void;
   email: string; setEmail: (v: string) => void;
@@ -345,7 +356,8 @@ function DetailsStep({
         ← CHANGE TIME
       </button>
       <div className="bg-bg-panel border border-line p-3 text-sm">
-        <strong>{service.name}</strong> · {formatLongDateTime(slot.start)}
+        <strong>{service.name}</strong> · {formatLongDateTime(slot.start, timezone)}
+        <span className="text-ink-dim text-xs ml-1">({tzAbbreviation(timezone)})</span>
       </div>
 
       <div>
@@ -623,13 +635,14 @@ function formatLongDate(dateStr: string): string {
   });
 }
 
-function formatLongDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
+function formatLongDateTime(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
     weekday: "long",
     month: "long",
     day: "numeric",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  });
+  }).format(new Date(iso));
 }

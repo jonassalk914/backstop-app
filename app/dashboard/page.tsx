@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatMoney, formatDateTime } from "@/lib/format";
+import { DEFAULT_TIMEZONE } from "@/lib/timezone";
 
 type Stats = {
   revenueThisMonthCents: number;
@@ -23,6 +24,7 @@ export default function DashboardOverview() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [upcoming, setUpcoming] = useState<UpcomingBooking[]>([]);
   const [slug, setSlug] = useState<string>("");
+  const [timezone, setTimezone] = useState<string>(DEFAULT_TIMEZONE);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -34,6 +36,7 @@ export default function DashboardOverview() {
       setStats(fin);
       setUpcoming(bookings.slice(0, 5));
       setSlug(settings.slug);
+      if (settings?.timezone) setTimezone(settings.timezone);
     });
   }, []);
 
@@ -124,7 +127,7 @@ export default function DashboardOverview() {
                 <div>
                   <div className="font-semibold">{b.player.name}</div>
                   <div className="text-sm text-ink-muted">
-                    {b.service.name} · {formatDateTime(new Date(b.startTime))}
+                    {b.service.name} · {formatDateTime(new Date(b.startTime), timezone)}
                   </div>
                 </div>
                 <PaymentBadge status={b.paymentStatus} />

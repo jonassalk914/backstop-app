@@ -24,7 +24,7 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
 
     const coach = await prisma.coach.findUnique({
       where: { slug: params.slug },
-      select: { id: true, enabled: true },
+      select: { id: true, enabled: true, timezone: true },
     });
     if (!coach || !coach.enabled) {
       return jsonNoStore({ error: "Coach not found" }, 404);
@@ -39,9 +39,10 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
     }
 
     if (date) {
-      const slots = await getSlotsForDate(coach.id, service.durationMinutes, date);
+      const slots = await getSlotsForDate(coach.id, service.durationMinutes, date, coach.timezone);
       return jsonNoStore({
         date,
+        timezone: coach.timezone,
         slots: slots.map((s) => ({
           start: s.start.toISOString(),
           end: s.end.toISOString(),
@@ -49,8 +50,8 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
       });
     }
 
-    const availableDates = await getAvailableDates(coach.id, 60);
-    return jsonNoStore({ availableDates });
+    const availableDates = await getAvailableDates(coach.id, 60, coach.timezone);
+    return jsonNoStore({ availableDates, timezone: coach.timezone });
   } catch (err) {
     console.error("[slots] unexpected error:", err);
     return jsonNoStore({ error: "Failed to load availability." }, 500);

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { tzAbbreviation, DEFAULT_TIMEZONE } from "@/lib/timezone";
 
 const DOW_LABELS_LONG = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const DOW_LABELS_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
@@ -170,6 +171,7 @@ export default function SchedulePage() {
   const [weekly, setWeekly] = useState<WeeklyWindow[]>([]);
   const [overrides, setOverrides] = useState<Override[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [timezone, setTimezone] = useState<string>(DEFAULT_TIMEZONE);
   const [savingWeekly, setSavingWeekly] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -181,6 +183,7 @@ export default function SchedulePage() {
     setWeekly(data.weekly ?? []);
     setOverrides(data.overrides ?? []);
     setBookings(data.bookings ?? []);
+    if (data.timezone) setTimezone(data.timezone);
   }
 
   useEffect(() => { load(); }, []);
@@ -232,7 +235,9 @@ export default function SchedulePage() {
           <div>
             <h1 className="h-display text-3xl tracking-wider">WEEKLY AVAILABILITY</h1>
             <p className="text-sm text-ink-muted mt-1">
-              Default windows that repeat every week. The calendar below shows what's actually bookable, with any one-off changes layered on top.
+              Default windows that repeat every week, in your timezone (
+              <span className="font-mono">{tzAbbreviation(timezone)} — {timezone}</span>
+              ). Players see the same wall clock. Change the zone in <a href="/dashboard/settings" className="text-signal hover:underline">settings</a>.
             </p>
           </div>
           <button

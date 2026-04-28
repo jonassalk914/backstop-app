@@ -1,4 +1,10 @@
 import { prisma } from "./prisma";
+import {
+  DEFAULT_TIMEZONE,
+  zonedDateMinutesToUtc,
+  zonedDayOfWeek,
+  zonedDateString,
+} from "./timezone";
 
 export type Slot = { start: Date; end: Date };
 export type Range = { startMinute: number; endMinute: number };
@@ -82,18 +88,24 @@ function mergeRanges(ranges: Range[]): Range[] {
  * Reads weekly availability for that DOW + per-date overrides, applies the
  * effective-ranges formula, slices into service-duration chunks, drops
  * chunks that overlap CONFIRMED bookings or fall inside the lead-time cutoff.
+ *
+ * `tz` defaults to America/New_York and represents the wall-clock the coach
+ * uses for their weekly windows. The returned Slot start/end are absolute
+ * UTC instants whose wall-clock in `tz` matches the configured minutes.
  */
 export async function getSlotsForDate(
   coachId: string,
   serviceDurationMinutes: number,
-  dateStr: string
+  dateStr: string,
+  tz: string = DEFAULT_TIMEZONE
 ): Promise<Slot[]> {
-  const day = parseDateString(dateStr);
-  if (!day) return [];
+  if (!parseDateString(dateStr)) return [];
 
-  const dayStart = new Date(day.getTime());
-  const dayEnd = new Date(day.getTime() + 24 * 60 * 60 * 1000);
-  const dow = day.getDay();
+  // The day boundaries we query against the DB are absolute UTC instants
+  // anchored to midnight in the coach's tz, NOT server-local midnight.
+  const dayStart = zonedDateMinutesToUtc(dateStr, 0, tz);
+  const dayEnd = zonedDateMinutesToUtc(dateStr, 24 * 60, tz);
+  const dow = zonedDayOfWeek(dayStart, tz);
 
   const [weekly, overrides, bookings] = await Promise.all([
     prisma.availability.findMany({
@@ -130,7 +142,7 @@ export async function getSlotsForDate(
   for (const range of effective) {
     let cursorMin = range.startMinute;
     while (cursorMin + serviceDurationMinutes <= range.endMinute) {
-      const start = new Date(day.getTime() + cursorMin * 60 * 1000);
+      const start = zonedDateMinutesToUtc(dateStr, cursorMin, tz);
       const end = new Date(start.getTime() + serviceDurationMinutes * 60 * 1000);
 
       if (start >= cutoff) {
@@ -151,15 +163,18 @@ export async function getSlotsForDate(
  * has any effective availability. Used to dot/highlight calendar dates.
  *
  * Implementation: precompute weekly DOW set + load overrides in range, then
- * for each candidate day decide if it's effectively non-empty.
+ * for each candidate day decide if it's effectively non-empty. Day boundaries
+ * are anchored to the coach's tz so the dot lights up on the right calendar
+ * cell regardless of where the server lives.
  */
 export async function getAvailableDates(
   coachId: string,
-  daysAhead: number = 60
+  daysAhead: number = 60,
+  tz: string = DEFAULT_TIMEZONE
 ): Promise<string[]> {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + daysAhead);
+  const todayStr = zonedDateString(new Date(), tz);
+  const start = zonedDateMinutesToUtc(todayStr, 0, tz);
+  const end = new Date(start.getTime() + daysAhead * 24 * 60 * 60 * 1000);
 
   const [weekly, overrides] = await Promise.all([
     prisma.availability.findMany({
@@ -180,7 +195,8 @@ export async function getAvailableDates(
     weeklyByDow.set(w.dayOfWeek, arr);
   }
 
-  // Group overrides by date
+  // Override `date` is a @db.Date so its UTC value is the date at 00:00 UTC;
+  // its YYYY-MM-DD label is independent of tz.
   const overridesByDate = new Map<string, typeof overrides>();
   for (const o of overrides) {
     const k = toDateString(o.date);
@@ -191,9 +207,10 @@ export async function getAvailableDates(
 
   const out: string[] = [];
   for (let i = 0; i < daysAhead; i++) {
-    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
-    const dateStr = toDateString(d);
-    const weeklyForDow = weeklyByDow.get(d.getDay()) ?? [];
+    const dayStartUtc = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
+    const dateStr = zonedDateString(dayStartUtc, tz);
+    const dow = zonedDayOfWeek(dayStartUtc, tz);
+    const weeklyForDow = weeklyByDow.get(dow) ?? [];
     const dayOverrides = overridesByDate.get(dateStr) ?? [];
 
     if (weeklyForDow.length === 0 && dayOverrides.length === 0) continue;
@@ -204,13 +221,21 @@ export async function getAvailableDates(
   return out;
 }
 
-/** Returns weekly + override rows for the schedule UI. */
-export async function getScheduleData(coachId: string, daysAhead: number = 60) {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + daysAhead);
+/**
+ * Returns weekly + override rows + upcoming bookings for the schedule UI.
+ * Booking start/end times are decomposed into the coach's tz so the calendar
+ * cells line up with the same wall clock the coach typed into the editor.
+ */
+export async function getScheduleData(
+  coachId: string,
+  daysAhead: number = 60,
+  tz: string = DEFAULT_TIMEZONE
+) {
+  const todayStr = zonedDateString(new Date(), tz);
+  const start = zonedDateMinutesToUtc(todayStr, 0, tz);
+  const end = new Date(start.getTime() + daysAhead * 24 * 60 * 60 * 1000);
 
-  const [weekly, overrides] = await Promise.all([
+  const [weekly, overrides, bookings] = await Promise.all([
     prisma.availability.findMany({
       where: { coachId },
       orderBy: [{ dayOfWeek: "asc" }, { startMinute: "asc" }],
@@ -218,6 +243,18 @@ export async function getScheduleData(coachId: string, daysAhead: number = 60) {
     prisma.availabilityOverride.findMany({
       where: { coachId, date: { gte: start, lt: end } },
       orderBy: [{ date: "asc" }, { startMinute: "asc" }],
+    }),
+    prisma.booking.findMany({
+      where: {
+        coachId,
+        status: "CONFIRMED",
+        startTime: { gte: start, lt: end },
+      },
+      include: {
+        player: { select: { name: true } },
+        service: { select: { name: true } },
+      },
+      orderBy: { startTime: "asc" },
     }),
   ]);
 
@@ -235,26 +272,67 @@ export async function getScheduleData(coachId: string, daysAhead: number = 60) {
       startMinute: o.startMinute,
       endMinute: o.endMinute,
     })),
+    bookings: bookings.map((b) => {
+      const [date, startMin] = splitInTz(b.startTime, tz);
+      const [, endMin] = splitInTz(b.endTime, tz);
+      return {
+        id: b.id,
+        date,
+        startMinute: startMin,
+        endMinute: endMin,
+        playerName: b.player.name,
+        serviceName: b.service.name,
+      };
+    }),
   };
 }
 
-/** YYYY-MM-DD in local time (NOT UTC — pairs with parseDateString). */
+/** Decompose a UTC instant into [YYYY-MM-DD, minutes-from-midnight] in `tz`. */
+function splitInTz(d: Date, tz: string): [string, number] {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "0";
+  let h = parseInt(get("hour"), 10);
+  if (h === 24) h = 0;
+  const m = parseInt(get("minute"), 10);
+  const dateStr = `${get("year")}-${get("month")}-${get("day")}`;
+  return [dateStr, h * 60 + m];
+}
+
+/**
+ * YYYY-MM-DD for Prisma `@db.Date` values. Postgres deserializes those as
+ * UTC-midnight Dates, so we read the calendar fields in UTC — server-local
+ * extraction would shift the date one back when the server is west of UTC.
+ */
 export function toDateString(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
-/** Parse YYYY-MM-DD as local-time midnight. Returns null if invalid. */
+/**
+ * Parse YYYY-MM-DD as UTC-midnight. Returns null if invalid.
+ *
+ * UTC (not server-local) so that storing the result in a Postgres `@db.Date`
+ * column always truncates to the same calendar date the user typed, even when
+ * the server is several timezones east or west of UTC.
+ */
 export function parseDateString(s: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   if (!m) return null;
   const y = parseInt(m[1], 10);
   const mo = parseInt(m[2], 10) - 1;
   const d = parseInt(m[3], 10);
-  const date = new Date(y, mo, d);
-  if (date.getFullYear() !== y || date.getMonth() !== mo || date.getDate() !== d) {
+  const date = new Date(Date.UTC(y, mo, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== mo || date.getUTCDate() !== d) {
     return null;
   }
   return date;

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { formatMoney, formatDateTime } from "@/lib/format";
+import { tzAbbreviation, DEFAULT_TIMEZONE } from "@/lib/timezone";
 
 type Booking = {
   id: string;
@@ -22,6 +23,13 @@ export default function BookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [filter, setFilter] = useState<Filter>("upcoming");
   const [editing, setEditing] = useState<Booking | null>(null);
+  const [timezone, setTimezone] = useState<string>(DEFAULT_TIMEZONE);
+
+  useEffect(() => {
+    fetch("/api/coach/settings")
+      .then((r) => r.json())
+      .then((s) => { if (s?.timezone) setTimezone(s.timezone); });
+  }, []);
 
   useEffect(() => {
     const q = filter === "all" ? "" : `?filter=${filter}`;
@@ -37,7 +45,12 @@ export default function BookingsPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-end flex-wrap gap-4">
-        <h1 className="h-display text-3xl tracking-wider">BOOKINGS</h1>
+        <div>
+          <h1 className="h-display text-3xl tracking-wider">BOOKINGS</h1>
+          <div className="text-[10px] font-mono tracking-widest text-ink-dim mt-1">
+            TIMES IN {tzAbbreviation(timezone).toUpperCase()} ({timezone})
+          </div>
+        </div>
         <div className="flex gap-1 border border-line">
           {(["upcoming", "unpaid", "past", "all"] as Filter[]).map((f) => (
             <button
@@ -75,7 +88,7 @@ export default function BookingsPage() {
                   )}
                 </div>
                 <div className="text-sm text-ink-muted">
-                  {b.service.name} · {formatDateTime(new Date(b.startTime))}
+                  {b.service.name} · {formatDateTime(new Date(b.startTime), timezone)}
                 </div>
               </div>
               <div className="flex items-center gap-3 ml-4">
@@ -87,17 +100,19 @@ export default function BookingsPage() {
         </div>
       )}
 
-      {editing && <BookingEditModal booking={editing} onClose={() => setEditing(null)} onSave={refresh} />}
+      {editing && <BookingEditModal booking={editing} timezone={timezone} onClose={() => setEditing(null)} onSave={refresh} />}
     </div>
   );
 }
 
 function BookingEditModal({
   booking,
+  timezone,
   onClose,
   onSave,
 }: {
   booking: Booking;
+  timezone: string;
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -139,7 +154,7 @@ function BookingEditModal({
         <div className="text-xs font-mono tracking-widest text-signal mb-2">BOOKING</div>
         <h2 className="h-display text-2xl mb-1">{booking.player.name}</h2>
         <div className="text-sm text-ink-muted mb-6">
-          {booking.service.name} · {formatDateTime(new Date(booking.startTime))}
+          {booking.service.name} · {formatDateTime(new Date(booking.startTime), timezone)}
         </div>
 
         <div className="space-y-4">

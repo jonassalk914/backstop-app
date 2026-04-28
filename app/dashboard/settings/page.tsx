@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { COMMON_TIMEZONES, tzAbbreviation } from "@/lib/timezone";
 
 type Settings = {
   email: string;
@@ -9,6 +10,7 @@ type Settings = {
   phone: string | null;
   paymentInstructions: string | null;
   paymentMethods: string[];
+  timezone: string;
 };
 
 const COMMON_METHODS = ["Venmo", "Cash App", "Zelle", "Cash", "PayPal", "Check"];
@@ -41,6 +43,7 @@ export default function SettingsPage() {
         phone: s.phone,
         paymentInstructions: s.paymentInstructions,
         paymentMethods: methods,
+        timezone: s.timezone,
       }),
     });
     setSaving(false);
@@ -98,6 +101,29 @@ export default function SettingsPage() {
           </div>
           <div className="text-xs text-ink-dim mt-1">
             Lowercase letters, numbers, and hyphens only.
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div className="text-xs font-mono tracking-widest text-signal">TIMEZONE</div>
+        <div>
+          <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">
+            COACH TIMEZONE
+          </label>
+          <select
+            value={s.timezone}
+            onChange={(e) => setS({ ...s, timezone: e.target.value })}
+          >
+            {COMMON_TIMEZONES.some((t) => t.value === s.timezone) ? null : (
+              <option value={s.timezone}>{s.timezone}</option>
+            )}
+            {COMMON_TIMEZONES.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
+          <div className="text-xs text-ink-dim mt-1">
+            Currently {tzAbbreviation(s.timezone)}. Times shown to you and to players are in this zone, so both sides see the same wall clock.
           </div>
         </div>
       </section>

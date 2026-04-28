@@ -11,6 +11,7 @@ export default async function BookPage({ params }: { params: { slug: string } })
       lastName: true,
       slug: true,
       enabled: true,
+      timezone: true,
       paymentMethods: true,
       paymentInstructions: true,
       services: {
@@ -44,6 +45,7 @@ export default async function BookPage({ params }: { params: { slug: string } })
             services={coach.services}
             paymentMethods={coach.paymentMethods}
             paymentInstructions={coach.paymentInstructions}
+            timezone={coach.timezone}
           />
         </div>
       </div>

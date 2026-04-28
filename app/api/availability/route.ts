@@ -6,15 +6,20 @@ import { getScheduleData } from "@/lib/booking";
 
 /**
  * GET /api/availability
- * Returns { weekly, overrides } for the schedule UI.
- * Overrides cover the next 60 days from today.
+ * Returns { weekly, overrides, bookings, timezone } for the schedule UI.
+ * Overrides and bookings cover the next 60 days from today in the coach's tz.
  */
 export async function GET() {
   const auth = await requireCoach();
   if ("error" in auth) return auth.error;
 
-  const data = await getScheduleData(auth.coachId, 60);
-  return NextResponse.json(data);
+  const coach = await prisma.coach.findUnique({
+    where: { id: auth.coachId },
+    select: { timezone: true },
+  });
+  const tz = coach?.timezone ?? "America/New_York";
+  const data = await getScheduleData(auth.coachId, 60, tz);
+  return NextResponse.json({ ...data, timezone: tz });
 }
 
 const WindowSchema = z.object({

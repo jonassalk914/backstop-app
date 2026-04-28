@@ -32,6 +32,11 @@ model Coach {
   enabled           Boolean  @default(true)
   paymentInstructions String? // free text: "Venmo @mike-r" or "Cash App $mikecoach"
   paymentMethods    String[] @default([]) // ["Venmo", "Zelle", "Cash"]
+  // IANA timezone (e.g. "America/New_York"). The coach's weekly windows
+  // are minutes-from-midnight in this zone, and every player/coach surface
+  // displays times in this zone — so both sides see the same wall clock
+  // regardless of their browser/server location.
+  timezone          String   @default("America/New_York")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

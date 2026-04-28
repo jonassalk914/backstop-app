@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireCoach } from "@/lib/guards";
 import { isValidSlug } from "@/lib/slug";
+import { isValidTimezone } from "@/lib/timezone";
 
 const SettingsSchema = z.object({
   firstName: z.string().min(1).max(50).optional(),
@@ -11,6 +12,7 @@ const SettingsSchema = z.object({
   slug: z.string().max(50).optional(),
   paymentInstructions: z.string().max(1000).optional().nullable(),
   paymentMethods: z.array(z.string().max(50)).max(10).optional(),
+  timezone: z.string().max(64).optional(),
 });
 
 export async function GET() {
@@ -28,6 +30,7 @@ export async function GET() {
       phone: true,
       paymentInstructions: true,
       paymentMethods: true,
+      timezone: true,
     },
   });
   return NextResponse.json(coach);
@@ -61,12 +64,17 @@ export async function PATCH(req: Request) {
     parsed.data.slug = desired;
   }
 
+  if (parsed.data.timezone && !isValidTimezone(parsed.data.timezone)) {
+    return NextResponse.json({ error: "Invalid timezone." }, { status: 400 });
+  }
+
   const updated = await prisma.coach.update({
     where: { id: auth.coachId },
     data: parsed.data,
     select: {
       id: true, email: true, firstName: true, lastName: true,
       slug: true, phone: true, paymentInstructions: true, paymentMethods: true,
+      timezone: true,
     },
   });
   return NextResponse.json(updated);
