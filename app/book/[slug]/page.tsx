@@ -16,7 +16,7 @@ export default async function BookPage({ params }: { params: { slug: string } })
       paymentInstructions: true,
       services: {
         where: { active: true },
-        select: { id: true, name: true, durationMinutes: true, priceCents: true },
+        select: { id: true, name: true, durationMinutes: true, priceCents: true, capacity: true },
         orderBy: { createdAt: "asc" },
       },
     },

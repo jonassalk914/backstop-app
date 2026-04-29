@@ -53,6 +53,10 @@ model Service {
   name            String
   durationMinutes Int
   priceCents      Int      // store cents to avoid float drift
+  // Max players per time slot. 1 = traditional 1-on-1; >1 = group lesson
+  // (e.g. 2-on-1 = 2). Bookings on the same coach+service+startTime stack
+  // up to this number; once full the slot disappears from the player flow.
+  capacity        Int      @default(1)
   active          Boolean  @default(true)
   createdAt       DateTime @default(now())
 
@@ -150,11 +154,12 @@ model Booking {
   player  Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
   service Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
 
-  // THE conflict-prevention constraint. Two CONFIRMED bookings can't share
-  // the same coach + start time. Combined with transactional check on
-  // overlap (different start, overlapping window), this prevents doubles.
-  @@unique([coachId, startTime])
+  // Conflict prevention is now done transactionally inside
+  // createBookingAtomic — group lessons let multiple CONFIRMED bookings
+  // share the same coach + service + startTime up to service.capacity, so a
+  // hard unique on (coachId, startTime) is no longer compatible.
   @@index([coachId, startTime])
+  @@index([coachId, serviceId, startTime])
   @@index([playerId])
   @@index([coachId, paymentStatus])
 }

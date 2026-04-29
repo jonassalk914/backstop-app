@@ -70,6 +70,7 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
       startTime,
       endTime,
       priceCents: service.priceCents,
+      capacity: service.capacity,
       paymentMethod: parsed.data.paymentMethod,
     });
 

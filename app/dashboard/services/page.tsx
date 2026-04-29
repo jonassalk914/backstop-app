@@ -7,6 +7,7 @@ type Service = {
   name: string;
   durationMinutes: number;
   priceCents: number;
+  capacity: number;
   active: boolean;
 };
 
@@ -55,6 +56,7 @@ export default function ServicesPage() {
             {services.filter((s) => !s.active).map((s) => (
               <div key={s.id} className="bg-bg-panel border border-line p-3 text-sm">
                 <span className="line-through">{s.name}</span> — {s.durationMinutes}min · {formatMoney(s.priceCents)}
+                {s.capacity > 1 && <> · group up to {s.capacity}</>}
               </div>
             ))}
           </div>
@@ -89,6 +91,7 @@ function ServiceRow({ service, onChanged }: { service: Service; onChanged: () =>
         <div className="font-semibold">{service.name}</div>
         <div className="text-sm text-ink-muted font-mono">
           {service.durationMinutes} MIN · {formatMoney(service.priceCents)}
+          {service.capacity > 1 && <> · GROUP UP TO {service.capacity}</>}
         </div>
       </div>
       <div className="flex gap-2">
@@ -115,12 +118,14 @@ function ServiceForm({
   const [name, setName] = useState(initial?.name || "");
   const [duration, setDuration] = useState(initial?.durationMinutes || 60);
   const [price, setPrice] = useState(initial ? (initial.priceCents / 100).toFixed(2) : "");
+  const [capacity, setCapacity] = useState(initial?.capacity || 1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function save() {
     setError(null);
     const priceCents = Math.round(parseFloat(price || "0") * 100);
+    const cap = Math.max(1, Math.min(50, Math.floor(capacity || 1)));
     if (!name.trim() || duration < 15 || priceCents < 0) {
       setError("Please fill all fields. Duration must be at least 15 min.");
       return;
@@ -131,7 +136,7 @@ function ServiceForm({
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), durationMinutes: duration, priceCents }),
+      body: JSON.stringify({ name: name.trim(), durationMinutes: duration, priceCents, capacity: cap }),
     });
     setSaving(false);
     if (res.ok) onSaved();
@@ -168,6 +173,22 @@ function ServiceForm({
             value={price}
             onChange={(e) => setPrice(e.target.value)}
           />
+        </div>
+      </div>
+      <div>
+        <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">
+          CAPACITY (PLAYERS PER SLOT)
+        </label>
+        <input
+          type="number"
+          min={1}
+          max={50}
+          step={1}
+          value={capacity}
+          onChange={(e) => setCapacity(parseInt(e.target.value) || 1)}
+        />
+        <div className="text-xs text-ink-dim mt-1">
+          1 = traditional 1-on-1. Increase for group lessons (e.g. 2 for a 2-on-1).
         </div>
       </div>
       {error && <div className="text-bad text-sm">{error}</div>}

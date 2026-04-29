@@ -7,6 +7,7 @@ const ServiceSchema = z.object({
   name: z.string().min(1).max(100),
   durationMinutes: z.number().int().min(15).max(480),
   priceCents: z.number().int().min(0).max(1_000_000),
+  capacity: z.number().int().min(1).max(50).optional(),
 });
 
 export async function GET() {

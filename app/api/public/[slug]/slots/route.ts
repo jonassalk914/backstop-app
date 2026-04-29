@@ -32,20 +32,29 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
 
     const service = await prisma.service.findFirst({
       where: { id: serviceId, coachId: coach.id, active: true },
-      select: { id: true, durationMinutes: true },
+      select: { id: true, durationMinutes: true, capacity: true },
     });
     if (!service) {
       return jsonNoStore({ error: "Service not found" }, 404);
     }
 
     if (date) {
-      const slots = await getSlotsForDate(coach.id, service.durationMinutes, date, coach.timezone);
+      const slots = await getSlotsForDate(
+        coach.id,
+        service.id,
+        service.durationMinutes,
+        service.capacity,
+        date,
+        coach.timezone
+      );
       return jsonNoStore({
         date,
         timezone: coach.timezone,
+        capacity: service.capacity,
         slots: slots.map((s) => ({
           start: s.start.toISOString(),
           end: s.end.toISOString(),
+          spotsLeft: s.spotsLeft,
         })),
       });
     }

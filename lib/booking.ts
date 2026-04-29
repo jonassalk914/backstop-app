@@ -6,7 +6,7 @@ import {
   zonedDateString,
 } from "./timezone";
 
-export type Slot = { start: Date; end: Date };
+export type Slot = { start: Date; end: Date; spotsLeft: number };
 export type Range = { startMinute: number; endMinute: number };
 
 /**
@@ -87,7 +87,10 @@ function mergeRanges(ranges: Range[]): Range[] {
  * Generate available slots on a specific calendar date (YYYY-MM-DD).
  * Reads weekly availability for that DOW + per-date overrides, applies the
  * effective-ranges formula, slices into service-duration chunks, drops
- * chunks that overlap CONFIRMED bookings or fall inside the lead-time cutoff.
+ * chunks that fall inside the lead-time cutoff or have a different
+ * service/start-time booking overlapping them. Slots for the requested
+ * service stay open until they reach `serviceCapacity` bookings — that's
+ * how group lessons (2-on-1, small group, etc.) coexist with 1-on-1s.
  *
  * `tz` defaults to America/New_York and represents the wall-clock the coach
  * uses for their weekly windows. The returned Slot start/end are absolute
@@ -95,7 +98,9 @@ function mergeRanges(ranges: Range[]): Range[] {
  */
 export async function getSlotsForDate(
   coachId: string,
+  serviceId: string,
   serviceDurationMinutes: number,
+  serviceCapacity: number,
   dateStr: string,
   tz: string = DEFAULT_TIMEZONE
 ): Promise<Slot[]> {
@@ -123,13 +128,14 @@ export async function getSlotsForDate(
         startTime: { lt: dayEnd },
         endTime: { gt: dayStart },
       },
-      select: { startTime: true, endTime: true },
+      select: { serviceId: true, startTime: true, endTime: true },
     }),
   ]);
 
   const effective = computeEffectiveRanges(weekly, overrides);
   if (effective.length === 0) return [];
 
+  const capacity = Math.max(1, serviceCapacity);
   const now = new Date();
   const cutoff = new Date(now.getTime() + 60 * 60 * 1000);
   const slots: Slot[] = [];
@@ -146,10 +152,23 @@ export async function getSlotsForDate(
       const end = new Date(start.getTime() + serviceDurationMinutes * 60 * 1000);
 
       if (start >= cutoff) {
-        const conflicts = bookings.some(
-          (b) => start < b.endTime && end > b.startTime
-        );
-        if (!conflicts) slots.push({ start, end });
+        // Bookings of THIS service at THIS exact start time stack into the
+        // group; everything else that overlaps is a hard conflict (the coach
+        // cannot run two distinct sessions simultaneously).
+        let groupCount = 0;
+        let otherConflict = false;
+        for (const b of bookings) {
+          if (b.endTime <= start || b.startTime >= end) continue;
+          if (b.serviceId === serviceId && b.startTime.getTime() === start.getTime()) {
+            groupCount++;
+          } else {
+            otherConflict = true;
+            break;
+          }
+        }
+        if (!otherConflict && groupCount < capacity) {
+          slots.push({ start, end, spotsLeft: capacity - groupCount });
+        }
       }
       cursorMin += stepMin;
     }
@@ -339,8 +358,14 @@ export function parseDateString(s: string): Date | null {
 }
 
 /**
- * Atomically check + create a booking. Relies on @@unique([coachId, startTime])
- * to prevent the race where two requests pass the overlap check simultaneously.
+ * Atomically check + create a booking. Two failure modes:
+ *   - "Time slot no longer available." — a different service/start time
+ *     overlaps the requested window (coach can't be in two places).
+ *   - "This session is full." — same coach + serviceId + startTime, but
+ *     the group already has `capacity` confirmed bookings.
+ *
+ * Both checks happen inside a transaction with a row-level read so two
+ * concurrent bookers don't both see "1 spot left" and both succeed.
  */
 export async function createBookingAtomic(args: {
   coachId: string;
@@ -349,42 +374,45 @@ export async function createBookingAtomic(args: {
   startTime: Date;
   endTime: Date;
   priceCents: number;
+  capacity: number;
   paymentMethod?: string;
 }): Promise<{ ok: true; bookingId: string } | { ok: false; reason: string }> {
-  try {
-    return await prisma.$transaction(async (tx) => {
-      const overlap = await tx.booking.findFirst({
-        where: {
-          coachId: args.coachId,
-          status: "CONFIRMED",
-          AND: [
-            { startTime: { lt: args.endTime } },
-            { endTime: { gt: args.startTime } },
-          ],
-        },
-        select: { id: true },
-      });
-      if (overlap) {
+  return await prisma.$transaction(async (tx) => {
+    const overlapping = await tx.booking.findMany({
+      where: {
+        coachId: args.coachId,
+        status: "CONFIRMED",
+        AND: [
+          { startTime: { lt: args.endTime } },
+          { endTime: { gt: args.startTime } },
+        ],
+      },
+      select: { serviceId: true, startTime: true },
+    });
+
+    let groupCount = 0;
+    for (const b of overlapping) {
+      if (b.serviceId === args.serviceId && b.startTime.getTime() === args.startTime.getTime()) {
+        groupCount++;
+      } else {
         return { ok: false as const, reason: "Time slot no longer available." };
       }
-
-      const booking = await tx.booking.create({
-        data: {
-          coachId: args.coachId,
-          serviceId: args.serviceId,
-          playerId: args.playerId,
-          startTime: args.startTime,
-          endTime: args.endTime,
-          priceCents: args.priceCents,
-          paymentMethod: args.paymentMethod,
-        },
-      });
-      return { ok: true as const, bookingId: booking.id };
-    });
-  } catch (e: any) {
-    if (e?.code === "P2002") {
-      return { ok: false, reason: "Time slot no longer available." };
     }
-    throw e;
-  }
+    if (groupCount >= Math.max(1, args.capacity)) {
+      return { ok: false as const, reason: "This session is full." };
+    }
+
+    const booking = await tx.booking.create({
+      data: {
+        coachId: args.coachId,
+        serviceId: args.serviceId,
+        playerId: args.playerId,
+        startTime: args.startTime,
+        endTime: args.endTime,
+        priceCents: args.priceCents,
+        paymentMethod: args.paymentMethod,
+      },
+    });
+    return { ok: true as const, bookingId: booking.id };
+  });
 }

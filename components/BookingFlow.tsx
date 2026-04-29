@@ -17,8 +17,8 @@ import { tzAbbreviation } from "@/lib/timezone";
  * not need to be modified.
  */
 
-type Service = { id: string; name: string; durationMinutes: number; priceCents: number };
-type Slot = { start: string; end: string };
+type Service = { id: string; name: string; durationMinutes: number; priceCents: number; capacity: number };
+type Slot = { start: string; end: string; spotsLeft: number };
 type Step = "service" | "datetime" | "details" | "done";
 
 export function BookingFlow({
@@ -242,7 +242,10 @@ function ServiceList({ services, onPick }: { services: Service[]; onPick: (s: Se
         >
           <div className="min-w-0">
             <div className="font-semibold truncate">{s.name}</div>
-            <div className="text-sm text-ink-muted font-mono">{s.durationMinutes} MIN</div>
+            <div className="text-sm text-ink-muted font-mono">
+              {s.durationMinutes} MIN
+              {s.capacity > 1 && <> · GROUP UP TO {s.capacity}</>}
+            </div>
           </div>
           <div className="h-display text-2xl text-signal whitespace-nowrap">{formatMoney(s.priceCents)}</div>
         </button>
@@ -318,9 +321,14 @@ function DateTimeStep({
                 <button
                   key={s.start}
                   onClick={() => onPickSlot(s)}
-                  className="bg-bg-panel border border-line hover:border-signal active:bg-bg-hover transition py-3 text-sm font-mono"
+                  className="bg-bg-panel border border-line hover:border-signal active:bg-bg-hover transition py-3 text-sm font-mono flex flex-col items-center gap-0.5"
                 >
-                  {formatTime(new Date(s.start), timezone)}
+                  <span>{formatTime(new Date(s.start), timezone)}</span>
+                  {service.capacity > 1 && (
+                    <span className="text-[9px] text-ink-dim tracking-widest">
+                      {s.spotsLeft} SPOT{s.spotsLeft === 1 ? "" : "S"} LEFT
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
