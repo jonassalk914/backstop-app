@@ -140,10 +140,10 @@ export async function getSlotsForDate(
   const cutoff = new Date(now.getTime() + 60 * 60 * 1000);
   const slots: Slot[] = [];
 
-  // Step granularity: 30 min for typical lessons, smaller for short services.
-  // E.g. a 60-min service in a 4-7pm window yields [4:00, 4:30, 5:00, 5:30, 6:00]
-  // rather than [4:00, 5:00, 6:00] — gives players more flexibility, Calendly-style.
-  const stepMin = Math.min(30, serviceDurationMinutes);
+  // Step by the service's full duration so slots are non-overlapping. A
+  // 60-min lesson in a 4-7pm window yields [4:00, 5:00, 6:00] instead of
+  // half-hour offsets — coaches default to back-to-back hour-long sessions.
+  const stepMin = serviceDurationMinutes;
 
   for (const range of effective) {
     let cursorMin = range.startMinute;
