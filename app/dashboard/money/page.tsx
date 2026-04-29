@@ -3,6 +3,16 @@ import { useEffect, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from "recharts";
 import { formatMoney, formatDateTime } from "@/lib/format";
 
+type Transaction = {
+  id: string;
+  startTime: string;
+  playerName: string;
+  serviceName: string;
+  priceCents: number;
+  amountPaidCents: number;
+  paymentStatus: string;
+};
+
 type FinancialData = {
   revenueThisMonthCents: number;
   projectedUpcomingCents: number;
@@ -12,19 +22,13 @@ type FinancialData = {
   revenueByService: { name: string; cents: number }[];
   revenueByPlayer: { name: string; cents: number }[];
   monthlyTrend: { month: string; cents: number }[];
-  unpaidBookings: {
-    id: string;
-    startTime: string;
-    playerName: string;
-    serviceName: string;
-    priceCents: number;
-    amountPaidCents: number;
-    paymentStatus: string;
-  }[];
+  unpaidBookings: Transaction[];
+  transactions: Transaction[];
 };
 
 export default function MoneyPage() {
   const [data, setData] = useState<FinancialData | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/financial").then((r) => r.json()).then(setData);
@@ -37,14 +41,33 @@ export default function MoneyPage() {
   const trendData = data.monthlyTrend.map((m) => ({ ...m, dollars: m.cents / 100 }));
   const serviceData = data.revenueByService.map((s) => ({ ...s, dollars: s.cents / 100 }));
 
+  async function refresh() {
+    const fresh = await fetch("/api/financial").then((r) => r.json());
+    setData(fresh);
+  }
+
   async function markPaid(id: string) {
     await fetch(`/api/bookings/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ paymentStatus: "PAID" }),
     });
-    const fresh = await fetch("/api/financial").then((r) => r.json());
-    setData(fresh);
+    refresh();
+  }
+
+  async function deleteTransaction(t: Transaction) {
+    if (!confirm(
+      `Delete this transaction (${t.playerName} — ${t.serviceName})? It will be removed from your finance totals.`
+    )) return;
+    setDeletingId(t.id);
+    const res = await fetch(`/api/bookings/${t.id}`, { method: "DELETE" });
+    setDeletingId(null);
+    if (res.ok) {
+      refresh();
+    } else {
+      const body = await res.json().catch(() => ({}));
+      alert(body.error || "Could not delete that transaction.");
+    }
   }
 
   return (
@@ -147,6 +170,49 @@ export default function MoneyPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Transaction log */}
+      <div>
+        <h2 className="h-display text-2xl tracking-wider mb-4">TRANSACTION LOG</h2>
+        {data.transactions.length === 0 ? (
+          <div className="bg-bg-panel border border-line p-6 text-center text-ink-muted">
+            No transactions yet.
+          </div>
+        ) : (
+          <div className="border border-line">
+            {data.transactions.map((t, i) => (
+              <div
+                key={t.id}
+                className={`flex items-center justify-between gap-3 p-4 bg-bg-panel ${
+                  i > 0 ? "border-t border-line" : ""
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="font-semibold truncate">{t.playerName}</div>
+                  <div className="text-sm text-ink-muted truncate">
+                    {t.serviceName} · {formatDateTime(new Date(t.startTime))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="text-right">
+                    <div className="font-mono text-sm">{formatMoney(t.priceCents)}</div>
+                    <div className="text-[10px] font-mono tracking-widest text-ink-dim">
+                      {t.paymentStatus}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => deleteTransaction(t)}
+                    disabled={deletingId === t.id}
+                    className="text-bad text-xs font-mono tracking-widest hover:underline disabled:opacity-50"
+                  >
+                    {deletingId === t.id ? "DELETING…" : "DELETE"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Unpaid list */}

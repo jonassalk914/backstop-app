@@ -15,10 +15,26 @@ type Player = {
 export default function PlayersPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [search, setSearch] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
+  function load() {
     fetch("/api/players").then((r) => r.json()).then(setPlayers);
-  }, []);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function deletePlayer(p: Player) {
+    if (!confirm(`Delete ${p.name} from your players? This can't be undone.`)) return;
+    setDeletingId(p.id);
+    const res = await fetch(`/api/players/${p.id}`, { method: "DELETE" });
+    setDeletingId(null);
+    if (res.ok) {
+      load();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Could not delete that player.");
+    }
+  }
 
   const filtered = players.filter((p) => {
     if (!search) return true;
@@ -69,19 +85,28 @@ export default function PlayersPage() {
                   <div className="text-sm">{new Date(p.lastActivity).toLocaleDateString()}</div>
                 </div>
               </div>
-              <div className="flex gap-4 text-xs font-mono mt-3">
-                <span>
-                  <span className="text-ink-dim">TOTAL</span>{" "}
-                  <span className="text-ink">{p.totalBookings}</span>
-                </span>
-                <span>
-                  <span className="text-ink-dim">UPCOMING</span>{" "}
-                  <span className="text-signal">{p.upcomingBookings}</span>
-                </span>
-                <span>
-                  <span className="text-ink-dim">DONE</span>{" "}
-                  <span className="text-ink">{p.completedBookings}</span>
-                </span>
+              <div className="flex justify-between items-center text-xs font-mono mt-3 gap-4 flex-wrap">
+                <div className="flex gap-4">
+                  <span>
+                    <span className="text-ink-dim">TOTAL</span>{" "}
+                    <span className="text-ink">{p.totalBookings}</span>
+                  </span>
+                  <span>
+                    <span className="text-ink-dim">UPCOMING</span>{" "}
+                    <span className="text-signal">{p.upcomingBookings}</span>
+                  </span>
+                  <span>
+                    <span className="text-ink-dim">DONE</span>{" "}
+                    <span className="text-ink">{p.completedBookings}</span>
+                  </span>
+                </div>
+                <button
+                  onClick={() => deletePlayer(p)}
+                  disabled={deletingId === p.id}
+                  className="text-bad hover:underline disabled:opacity-50 tracking-widest"
+                >
+                  {deletingId === p.id ? "DELETING…" : "DELETE"}
+                </button>
               </div>
             </div>
           ))}

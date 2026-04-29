@@ -104,6 +104,24 @@ export async function GET() {
       paymentStatus: b.paymentStatus,
     }));
 
+  // Full finance log: every non-cancelled booking, newest first.
+  // Cancelled bookings are already filtered out of the source query so the
+  // log naturally hides the soft-deleted ones (which keeps DELETE behavior
+  // consistent with what the totals do).
+  const transactions = bookings
+    .slice()
+    .sort((a, b) => b.startTime.getTime() - a.startTime.getTime())
+    .slice(0, 100)
+    .map((b) => ({
+      id: b.id,
+      startTime: b.startTime,
+      playerName: b.player.name,
+      serviceName: b.service.name,
+      priceCents: b.priceCents,
+      amountPaidCents: b.amountPaidCents,
+      paymentStatus: b.paymentStatus,
+    }));
+
   return NextResponse.json({
     revenueThisMonthCents,
     projectedUpcomingCents,
@@ -114,5 +132,6 @@ export async function GET() {
     revenueByPlayer: Array.from(byPlayer.values()).sort((a, b) => b.cents - a.cents).slice(0, 10),
     monthlyTrend,
     unpaidBookings,
+    transactions,
   });
 }
