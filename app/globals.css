@@ -15,6 +15,15 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* When installed as a PWA on iOS the status bar overlays the page; respect
+   the safe-area insets so headers/footers don't slip under the notch. */
+@supports (padding: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
 .h-display {
   font-family: "Bebas Neue", Impact, sans-serif;
   letter-spacing: 0.04em;

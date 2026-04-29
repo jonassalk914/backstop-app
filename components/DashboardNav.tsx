@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const TABS = [
   { href: "/dashboard", label: "OVERVIEW" },
@@ -25,6 +25,15 @@ export function DashboardNav({
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Hide the INSTALL hint when already running standalone — no point
+  // prompting a coach who has already added the app to their home screen.
+  const [standalone, setStandalone] = useState(false);
+  useEffect(() => {
+    setStandalone(
+      window.matchMedia?.("(display-mode: standalone)").matches ||
+        (navigator as any).standalone === true
+    );
+  }, []);
 
   return (
     <header className="border-b border-line bg-bg sticky top-0 z-20">
@@ -60,6 +69,15 @@ export function DashboardNav({
                   onClick={() => setMenuOpen(false)}
                 />
                 <div className="absolute right-0 top-full mt-1 bg-bg-elev border border-line py-1 min-w-[160px] z-20">
+                  {!standalone && (
+                    <Link
+                      href="/dashboard/install"
+                      onClick={() => setMenuOpen(false)}
+                      className="block w-full text-left px-4 py-2 text-sm hover:bg-bg-hover"
+                    >
+                      Install app
+                    </Link>
+                  )}
                   <button
                     onClick={() => signOut({ callbackUrl: "/" })}
                     className="block w-full text-left px-4 py-2 text-sm hover:bg-bg-hover"
