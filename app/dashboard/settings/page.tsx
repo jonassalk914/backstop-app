@@ -11,6 +11,15 @@ type Settings = {
   paymentInstructions: string | null;
   paymentMethods: string[];
   timezone: string;
+  displayName: string | null;
+  bio: string | null;
+  publicEmail: string | null;
+  accentColor: string | null;
+  logoUrl: string | null;
+  venmoHandle: string | null;
+  cashAppHandle: string | null;
+  zelleInfo: string | null;
+  cashInstructions: string | null;
 };
 
 const COMMON_METHODS = ["Venmo", "Cash App", "Zelle", "Cash", "PayPal", "Check"];
@@ -44,6 +53,15 @@ export default function SettingsPage() {
         paymentInstructions: s.paymentInstructions,
         paymentMethods: methods,
         timezone: s.timezone,
+        displayName: s.displayName,
+        bio: s.bio,
+        publicEmail: s.publicEmail,
+        accentColor: s.accentColor,
+        logoUrl: s.logoUrl,
+        venmoHandle: s.venmoHandle,
+        cashAppHandle: s.cashAppHandle,
+        zelleInfo: s.zelleInfo,
+        cashInstructions: s.cashInstructions,
       }),
     });
     setSaving(false);
@@ -81,13 +99,6 @@ export default function SettingsPage() {
         <div>
           <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">EMAIL</label>
           <input value={s.email} disabled className="opacity-60" />
-        </div>
-        <div>
-          <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">PHONE (OPTIONAL)</label>
-          <input
-            value={s.phone || ""}
-            onChange={(e) => setS({ ...s, phone: e.target.value })}
-          />
         </div>
       </section>
 
@@ -129,6 +140,100 @@ export default function SettingsPage() {
       </section>
 
       <section className="space-y-4">
+        <div className="text-xs font-mono tracking-widest text-signal">PUBLIC BOOKING PAGE</div>
+        <p className="text-xs text-ink-dim -mt-2">
+          Shown to players at <span className="font-mono">/book/{s.slug}</span>. Only your page is affected.
+        </p>
+        <div>
+          <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">
+            DISPLAY / BUSINESS NAME (OPTIONAL)
+          </label>
+          <input
+            placeholder={`${s.firstName} ${s.lastName}`}
+            value={s.displayName || ""}
+            onChange={(e) => setS({ ...s, displayName: e.target.value })}
+          />
+          <div className="text-xs text-ink-dim mt-1">
+            Falls back to your first + last name when blank.
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">SHORT BIO</label>
+          <textarea
+            rows={3}
+            placeholder="A sentence or two about you and what players can expect."
+            value={s.bio || ""}
+            onChange={(e) => setS({ ...s, bio: e.target.value })}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">
+              PUBLIC PHONE
+            </label>
+            <input
+              placeholder="(555) 123-4567"
+              value={s.phone || ""}
+              onChange={(e) => setS({ ...s, phone: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">
+              PUBLIC EMAIL
+            </label>
+            <input
+              type="email"
+              placeholder="coach@example.com"
+              value={s.publicEmail || ""}
+              onChange={(e) => setS({ ...s, publicEmail: e.target.value })}
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">
+            LOGO / PHOTO URL (OPTIONAL)
+          </label>
+          <input
+            placeholder="https://…"
+            value={s.logoUrl || ""}
+            onChange={(e) => setS({ ...s, logoUrl: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">
+            ACCENT COLOR
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={s.accentColor || "#d4ff00"}
+              onChange={(e) => setS({ ...s, accentColor: e.target.value })}
+              className="!w-12 !p-1 h-10 cursor-pointer"
+            />
+            <input
+              type="text"
+              placeholder="#d4ff00"
+              value={s.accentColor || ""}
+              onChange={(e) => setS({ ...s, accentColor: e.target.value })}
+              className="flex-1 font-mono"
+            />
+            {s.accentColor && (
+              <button
+                onClick={() => setS({ ...s, accentColor: null })}
+                className="text-xs font-mono text-ink-muted hover:text-ink px-2"
+                aria-label="Reset accent color"
+              >
+                RESET
+              </button>
+            )}
+          </div>
+          <div className="text-xs text-ink-dim mt-1">
+            Applied only to your booking page buttons and highlights. Default is the Backstop yellow.
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4">
         <div className="text-xs font-mono tracking-widest text-signal">PAYMENT</div>
         <div>
           <label className="text-xs text-ink-muted font-mono tracking-wider mb-2 block">
@@ -150,13 +255,47 @@ export default function SettingsPage() {
             ))}
           </div>
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">VENMO HANDLE</label>
+            <input
+              placeholder="@mike-coach"
+              value={s.venmoHandle || ""}
+              onChange={(e) => setS({ ...s, venmoHandle: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">CASH APP</label>
+            <input
+              placeholder="$mikecoach"
+              value={s.cashAppHandle || ""}
+              onChange={(e) => setS({ ...s, cashAppHandle: e.target.value })}
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">ZELLE</label>
+          <input
+            placeholder="Email or phone for Zelle"
+            value={s.zelleInfo || ""}
+            onChange={(e) => setS({ ...s, zelleInfo: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">CASH</label>
+          <input
+            placeholder="e.g. Bring exact amount to the field"
+            value={s.cashInstructions || ""}
+            onChange={(e) => setS({ ...s, cashInstructions: e.target.value })}
+          />
+        </div>
         <div>
           <label className="text-xs text-ink-muted font-mono tracking-wider mb-1 block">
-            PAYMENT INSTRUCTIONS (SHOWN TO PLAYERS)
+            EXTRA INSTRUCTIONS (SHOWN TO PLAYERS)
           </label>
           <textarea
-            rows={4}
-            placeholder="e.g. Venmo @mike-coach (last 4: 1234) — please include player's name in note."
+            rows={3}
+            placeholder="Anything else, e.g. 'include player's name in the note'."
             value={s.paymentInstructions || ""}
             onChange={(e) => setS({ ...s, paymentInstructions: e.target.value })}
           />

@@ -21,18 +21,27 @@ type Service = { id: string; name: string; durationMinutes: number; priceCents: 
 type Slot = { start: string; end: string; spotsLeft: number };
 type Step = "service" | "datetime" | "details" | "done";
 
+type PaymentHandles = {
+  venmo: string | null;
+  cashApp: string | null;
+  zelle: string | null;
+  cash: string | null;
+};
+
 export function BookingFlow({
   slug,
   services,
   paymentMethods,
   paymentInstructions,
   timezone,
+  paymentHandles,
 }: {
   slug: string;
   services: Service[];
   paymentMethods: string[];
   paymentInstructions: string | null;
   timezone: string;
+  paymentHandles?: PaymentHandles;
 }) {
   const [step, setStep] = useState<Step>("service");
   const [service, setService] = useState<Service | null>(null);
@@ -115,6 +124,12 @@ export function BookingFlow({
   }
 
   if (step === "done") {
+    const handleRows: Array<[string, string]> = [];
+    if (paymentHandles?.venmo) handleRows.push(["Venmo", paymentHandles.venmo]);
+    if (paymentHandles?.cashApp) handleRows.push(["Cash App", paymentHandles.cashApp]);
+    if (paymentHandles?.zelle) handleRows.push(["Zelle", paymentHandles.zelle]);
+    if (paymentHandles?.cash) handleRows.push(["Cash", paymentHandles.cash]);
+    const showPaymentBox = handleRows.length > 0 || !!paymentInstructions;
     return (
       <div className="bg-bg-panel border border-signal/40 p-8 text-center">
         <div className="text-signal h-display text-5xl mb-3">BOOKED.</div>
@@ -123,10 +138,24 @@ export function BookingFlow({
             <>You're set for <strong>{formatLongDateTime(slot.start, timezone)}</strong>.</>
           )}
         </p>
-        {paymentInstructions && (
-          <div className="bg-bg-elev border border-line p-4 text-left mt-6">
-            <div className="text-xs font-mono tracking-widest text-signal mb-2">PAYMENT</div>
-            <div className="text-sm whitespace-pre-wrap">{paymentInstructions}</div>
+        {showPaymentBox && (
+          <div className="bg-bg-elev border border-line p-4 text-left mt-6 space-y-3">
+            <div className="text-xs font-mono tracking-widest text-signal">PAYMENT</div>
+            {handleRows.length > 0 && (
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                {handleRows.map(([label, value]) => (
+                  <div key={label} className="contents">
+                    <span className="text-ink-dim font-mono text-xs uppercase tracking-wider self-center">
+                      {label}
+                    </span>
+                    <span className="font-mono break-words">{value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {paymentInstructions && (
+              <div className="text-sm whitespace-pre-wrap">{paymentInstructions}</div>
+            )}
           </div>
         )}
       </div>

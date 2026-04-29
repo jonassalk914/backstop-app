@@ -32,6 +32,19 @@ model Coach {
   enabled           Boolean  @default(true)
   paymentInstructions String? // free text: "Venmo @mike-r" or "Cash App $mikecoach"
   paymentMethods    String[] @default([]) // ["Venmo", "Zelle", "Cash"]
+  // Public booking page customization. All nullable — only renders when set,
+  // and falls back to safe defaults so /book/[slug] still works for coaches
+  // who haven't customized anything. None of these are used outside the
+  // public booking page; auth/admin/dashboard stay on the canonical fields.
+  displayName       String?  // overrides "{firstName} {lastName}" headline
+  bio               String?  // short paragraph shown below the headline
+  publicEmail       String?  // contact email shown publicly (login email stays private)
+  accentColor       String?  // hex like "#d4ff00" — only the public page reads this
+  logoUrl           String?  // optional image URL for the public header
+  venmoHandle       String?
+  cashAppHandle     String?
+  zelleInfo         String?
+  cashInstructions  String?
   // IANA timezone (e.g. "America/New_York"). The coach's weekly windows
   // are minutes-from-midnight in this zone, and every player/coach surface
   // displays times in this zone — so both sides see the same wall clock
